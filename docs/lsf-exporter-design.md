@@ -24,6 +24,32 @@ Production builds use `go build -tags lsf`, which enables the cgo implementation
 
 Prometheus receives stable numeric metrics and bounded labels. The full per-job payload is exposed through `/jobs` because exporting every job field as Prometheus labels would create high cardinality and can overload Prometheus.
 
+## Unsupported Data and Extension Boundaries
+
+The current implementation intentionally exposes only job information returned by `lsb_openjobinfo` and `lsb_readjobinfo`. It does not query other LSF object families such as queues, hosts, cluster state, license usage, or scheduler diagnostics.
+
+Unsupported data is grouped below to make future extensions explicit:
+
+| Area | Current status | Reason | Possible extension path |
+| --- | --- | --- | --- |
+| Queue configuration and queue load | Supported through external JSON | The native C collector still only opens job queries. | Use `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` now; replace with a native queue source later if desired. |
+| Host status, slots, and load | Supported through external JSON | Host data changes independently from job data. | Use an external command/script now; keep host metrics separate from job labels. |
+| Cluster or master state | Supported through external JSON | `/healthz` still reflects exporter process health only. | Publish cluster/master state through external JSON or a future native source. |
+| License usage | Supported through external JSON | License data is not part of `jobInfoEnt`. | Publish license feature totals through external JSON or a future dedicated collector. |
+| Pending reason | Not collected | The current job field copy does not include scheduler pending reason details. | Extend job field extraction or add a diagnostic query; prefer `/jobs` JSON for verbose reason text. |
+| Exit reason | Partially collected | The collector now copies `exitStatus`, but detailed termination diagnostics are still not mapped. | Keep `exit_status` as a numeric metric and add detailed reason text to JSON only when a stable LSF field is confirmed. |
+| Job dependency | Partially collected | The submit dependency condition is copied to `/jobs`, but dependency resolution diagnostics are not collected. | Keep dependency expressions in JSON and expose only bounded aggregate metrics if needed. |
+| Resource requirement details | Partially collected | The submit resource requirement string is copied to `/jobs`; it is intentionally excluded from Prometheus labels. | Parse selected low-cardinality dimensions later if operators define an allowlist. |
+| GPU usage | Supported through external JSON | GPU usage is environment-specific and not mapped by the native job collector. | Publish `gpu_requested` and `gpu_used` through external JSON, or parse selected resource fields later. |
+| Custom resource usage | Supported through external JSON | Custom resources vary by cluster and can create unbounded dimensions. | Publish allowlisted resources through external JSON. |
+
+Future extensions should preserve the existing protection model: no LSF API calls in the scrape path, bounded Prometheus labels, separate collection intervals for expensive object families, and JSON endpoints for verbose or high-cardinality fields.
+
+## External Resource Extension
+
+The native cgo source remains responsible for job collection through the LSF C API. Queue, host, cluster, license, GPU, and site-specific custom resource data can be supplied through `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND`. The command must emit JSON matching the exporter `Data` schema: `jobs`, `queues`, `hosts`, `cluster`, `licenses`, and `custom_resources`.
+
+This keeps the scrape path safe while allowing operators to integrate LSF CLI scripts, site-specific APIs, or future native C API collectors without changing the HTTP and Prometheus surface. Verbose or high-cardinality fields such as pending reasons, exit reasons, resource requirement strings, dependency expressions, command paths, and custom resource details remain JSON-first and should only become metrics after explicit low-cardinality parsing or allowlisting.
 ## Operational Defaults
 
 The default collection interval is 30 seconds. Operators can tune it, but the exporter rejects intervals below the configured minimum interval, which defaults to 10 seconds. The default HTTP listen address is `:9818`.

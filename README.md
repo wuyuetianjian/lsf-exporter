@@ -37,7 +37,9 @@ Development builds without `-tags lsf` use a stub collector and are only useful 
 Endpoints:
 
 - `/metrics`: Prometheus metrics.
-- `/jobs`: cached job snapshot as JSON, including copied job fields.
+- `/jobs`: cached full snapshot as JSON, including copied job fields.
+- `/snapshot`: cached full snapshot as JSON.
+- `/queues`, `/hosts`, `/cluster`, `/licenses`, `/resources`: resource-specific JSON views.
 - `/healthz`: process health.
 
 ## Configuration
@@ -58,6 +60,9 @@ Environment variables:
 | `LSF_EXPORTER_QUERY_JOB_NAME` | empty | Job name filter. |
 | `LSF_EXPORTER_QUERY_JOB_ID` | `0` | Specific job ID; `0` means no job ID filter. |
 | `LSF_EXPORTER_ALL_JOBS` | `false` | Use `ALL_JOB` instead of safer `CUR_JOB`. Enable only after capacity review. |
+| `LSF_EXPORTER_DISABLE_NATIVE_COLLECTOR` | `false` | Disable the native LSF C API collector and rely on external JSON collection only. |
+| `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` | empty | Optional command that writes JSON for queues, hosts, cluster, licenses, custom resources, or extra job details. |
+| `LSF_EXPORTER_EXTERNAL_RESOURCE_TIMEOUT` | `10s` | Timeout for the external resource command. |
 
 ## Prometheus Metrics
 
@@ -68,18 +73,30 @@ Important self-monitoring metrics:
 - `lsf_exporter_collect_errors_total`
 - `lsf_exporter_collect_skipped_total`
 - `lsf_exporter_last_success_timestamp_seconds`
+- `lsf_exporter_snapshot_queues`
+- `lsf_exporter_snapshot_hosts`
+- `lsf_exporter_snapshot_licenses`
+- `lsf_exporter_snapshot_custom_resources`
 - `lsf_exporter_snapshot_age_seconds`
 - `lsf_exporter_last_collect_duration_seconds`
 
 Job metrics:
 
+The `/jobs` JSON payload also includes job detail fields that are intentionally not exposed as Prometheus labels, including `exit_status`, `resource_requirement`, and `dependency_condition`.
+
 - `lsf_job_info`
 - `lsf_job_cpu_time_seconds`
 - `lsf_job_memory_kilobytes`
 - `lsf_job_swap_kilobytes`
+- `lsf_job_exit_status`
 - `lsf_job_runtime_seconds`
 - `lsf_jobs_total`
 
+## External Resource JSON
+
+Queue, host, cluster, license, GPU, and custom resource collection is exposed through an optional external JSON command. Set `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` to a local script or command that writes a JSON object with any of these fields: `jobs`, `queues`, `hosts`, `cluster`, `licenses`, and `custom_resources`.
+
+See `README.zh-CN.md` for the full JSON schema and examples.
 ## Prometheus Scrape Example
 
 ```yaml

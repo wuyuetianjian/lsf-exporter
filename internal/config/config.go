@@ -12,10 +12,12 @@ import (
 )
 
 type Config struct {
-	ListenAddress string
-	LogLevel      logger.Level
-	Collector     collector.ServiceConfig
-	LSF           collector.LSFConfig
+	ListenAddress          string
+	LogLevel               logger.Level
+	DisableNativeCollector bool
+	Collector              collector.ServiceConfig
+	LSF                    collector.LSFConfig
+	External               collector.ExternalConfig
 }
 
 func Load() (Config, error) {
@@ -31,6 +33,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	externalTimeout, err := durationEnv("LSF_EXPORTER_EXTERNAL_RESOURCE_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return Config{}, err
+	}
 	if interval < minInterval {
 		return Config{}, fmt.Errorf("LSF_EXPORTER_INTERVAL (%s) must be >= LSF_EXPORTER_MIN_INTERVAL (%s)", interval, minInterval)
 	}
@@ -41,8 +47,9 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		ListenAddress: env("LSF_EXPORTER_LISTEN_ADDRESS", ":9818"),
-		LogLevel:      level,
+		ListenAddress:          env("LSF_EXPORTER_LISTEN_ADDRESS", ":9818"),
+		LogLevel:               level,
+		DisableNativeCollector: boolEnv("LSF_EXPORTER_DISABLE_NATIVE_COLLECTOR", false),
 		Collector: collector.ServiceConfig{
 			Interval:    interval,
 			MinInterval: minInterval,
@@ -56,6 +63,10 @@ func Load() (Config, error) {
 			QueryJobName: os.Getenv("LSF_EXPORTER_QUERY_JOB_NAME"),
 			QueryJobID:   int64Env("LSF_EXPORTER_QUERY_JOB_ID", 0),
 			QueryAllJobs: boolEnv("LSF_EXPORTER_ALL_JOBS", false),
+		},
+		External: collector.ExternalConfig{
+			Command: env("LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND", ""),
+			Timeout: externalTimeout,
 		},
 	}, nil
 }

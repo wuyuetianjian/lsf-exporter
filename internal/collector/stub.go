@@ -12,8 +12,8 @@ type stubSource struct {
 	cfg LSFConfig
 }
 
-func (s *stubSource) Collect() ([]Job, error) {
-	return nil, fmt.Errorf("LSF C API collector is disabled; rebuild with: go build -tags lsf ./cmd/lsf-exporter")
+func (s *stubSource) Collect() (Data, error) {
+	return Data{}, fmt.Errorf("LSF C API collector is disabled; rebuild with: go build -tags lsf ./cmd/lsf-exporter")
 }
 
 func (s *stubSource) Close() error {

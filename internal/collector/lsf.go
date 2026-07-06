@@ -37,9 +37,12 @@ typedef struct {
 	char *input_file;
 	char *output_file;
 	char *error_file;
+	char *resource_requirement;
+	char *dependency_condition;
 	long long submit_time;
 	long long start_time;
 	long long end_time;
+	int exit_status;
 	double cpu_time;
 	long long memory_kb;
 	long long swap_kb;
@@ -134,9 +137,12 @@ static void fill_job(struct jobInfoEnt *job, lsf_exporter_job *out) {
 	out->input_file = dupstr(job->submit.inFile);
 	out->output_file = dupstr(job->submit.outFile);
 	out->error_file = dupstr(job->submit.errFile);
+	out->resource_requirement = dupstr(job->submit.resReq);
+	out->dependency_condition = dupstr(job->submit.dependCond);
 	out->submit_time = (long long)job->submitTime;
 	out->start_time = (long long)job->startTime;
 	out->end_time = (long long)job->endTime;
+	out->exit_status = job->exitStatus;
 	out->cpu_time = (double)job->cpuTime;
 	out->memory_kb = (long long)job->runRusage.mem;
 	out->swap_kb = (long long)job->runRusage.swap;
@@ -216,6 +222,8 @@ static void lsf_exporter_free_job(lsf_exporter_job *job) {
 	free(job->input_file);
 	free(job->output_file);
 	free(job->error_file);
+	free(job->resource_requirement);
+	free(job->dependency_condition);
 }
 
 static void lsf_exporter_free_jobs(lsf_exporter_job *jobs, int count) {
@@ -251,12 +259,12 @@ func NewLSFSource(cfg LSFConfig) (Source, error) {
 	defer C.free(unsafe.Pointer(errBuf))
 
 	if rc := C.lsf_exporter_init(app, errBuf, 4096); rc != 0 {
-		return nil, errors.New(C.GoString(errBuf))
+		return Data{}, errors.New(C.GoString(errBuf))
 	}
 	return &lsfSource{cfg: cfg}, nil
 }
 
-func (s *lsfSource) Collect() ([]Job, error) {
+func (s *lsfSource) Collect() (Data, error) {
 	var cJobs *C.lsf_exporter_job
 	var cCount C.int
 	errBuf := (*C.char)(C.calloc(1, 4096))
@@ -289,7 +297,7 @@ func (s *lsfSource) Collect() ([]Job, error) {
 		4096,
 	)
 	if rc != 0 {
-		return nil, errors.New(C.GoString(errBuf))
+		return Data{}, errors.New(C.GoString(errBuf))
 	}
 	defer C.lsf_exporter_free_jobs(cJobs, cCount)
 
@@ -317,37 +325,43 @@ func (s *lsfSource) Collect() ([]Job, error) {
 			SubmitTime:    int64(record.submit_time),
 			StartTime:     int64(record.start_time),
 			EndTime:       int64(record.end_time),
+			ExitStatus:    int(record.exit_status),
 			CPUTime:       float64(record.cpu_time),
 			MemoryKB:      int64(record.memory_kb),
 			SwapKB:        int64(record.swap_kb),
+			ResourceReq:   C.GoString(record.resource_requirement),
+			Dependency:    C.GoString(record.dependency_condition),
 		}
 		job.Raw = map[string]string{
-			"job_id":         fmt.Sprintf("%d", job.ID),
-			"status_code":    fmt.Sprintf("%d", job.StatusCode),
-			"status":         job.Status,
-			"user":           job.User,
-			"queue":          job.Queue,
-			"name":           job.Name,
-			"project":        job.Project,
-			"application":    job.Application,
-			"service_class":  job.ServiceClass,
-			"from_host":      job.FromHost,
-			"execution_host": job.ExecutionHost,
-			"command":        job.Command,
-			"cwd":            job.CWD,
-			"input_file":     job.InputFile,
-			"output_file":    job.OutputFile,
-			"error_file":     job.ErrorFile,
-			"submit_time":    fmt.Sprintf("%d", job.SubmitTime),
-			"start_time":     fmt.Sprintf("%d", job.StartTime),
-			"end_time":       fmt.Sprintf("%d", job.EndTime),
-			"cpu_time":       fmt.Sprintf("%f", job.CPUTime),
-			"memory_kb":      fmt.Sprintf("%d", job.MemoryKB),
-			"swap_kb":        fmt.Sprintf("%d", job.SwapKB),
+			"job_id":               fmt.Sprintf("%d", job.ID),
+			"status_code":          fmt.Sprintf("%d", job.StatusCode),
+			"status":               job.Status,
+			"user":                 job.User,
+			"queue":                job.Queue,
+			"name":                 job.Name,
+			"project":              job.Project,
+			"application":          job.Application,
+			"service_class":        job.ServiceClass,
+			"from_host":            job.FromHost,
+			"execution_host":       job.ExecutionHost,
+			"command":              job.Command,
+			"cwd":                  job.CWD,
+			"input_file":           job.InputFile,
+			"output_file":          job.OutputFile,
+			"error_file":           job.ErrorFile,
+			"submit_time":          fmt.Sprintf("%d", job.SubmitTime),
+			"start_time":           fmt.Sprintf("%d", job.StartTime),
+			"end_time":             fmt.Sprintf("%d", job.EndTime),
+			"exit_status":          fmt.Sprintf("%d", job.ExitStatus),
+			"cpu_time":             fmt.Sprintf("%f", job.CPUTime),
+			"memory_kb":            fmt.Sprintf("%d", job.MemoryKB),
+			"swap_kb":              fmt.Sprintf("%d", job.SwapKB),
+			"resource_requirement": job.ResourceReq,
+			"dependency_condition": job.Dependency,
 		}
 		jobs = append(jobs, job)
 	}
-	return jobs, nil
+	return Data{Jobs: jobs}, nil
 }
 
 func (s *lsfSource) Close() error {

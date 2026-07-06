@@ -25,11 +25,24 @@ func main() {
 
 	log := logger.New(os.Stdout, cfg.LogLevel)
 
-	src, err := collector.NewLSFSource(cfg.LSF)
-	if err != nil {
-		log.Error("failed to initialize LSF collector", "error", err)
-		os.Exit(1)
+	var sources []collector.Source
+	if !cfg.DisableNativeCollector {
+		src, err := collector.NewLSFSource(cfg.LSF)
+		if err != nil {
+			log.Error("failed to initialize LSF collector", "error", err)
+			os.Exit(1)
+		}
+		sources = append(sources, src)
 	}
+	if !collector.IsNoopExternalConfig(cfg.External) {
+		sources = append(sources, collector.NewExternalSource(cfg.External))
+	}
+	if len(sources) == 0 {
+		log.Warn("no collectors are enabled; exporter will publish empty snapshots")
+		sources = append(sources, collector.NewExternalSource(cfg.External))
+	}
+
+	src := collector.NewCompositeSource(sources...)
 	defer src.Close()
 
 	svc := collector.NewService(src, cfg.Collector, log)

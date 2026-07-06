@@ -68,12 +68,12 @@ func (s *Service) collectOnce() {
 
 	s.lastAttempt.Store(now.Unix())
 	start := time.Now()
-	jobs, err := s.source.Collect()
+	data, err := s.source.Collect()
 	duration := time.Since(start)
 	s.collections.Add(1)
 
 	snap := Snapshot{
-		Jobs:        jobs,
+		Data:        data,
 		CollectedAt: time.Now(),
 		Duration:    duration.String(),
 	}
@@ -84,9 +84,9 @@ func (s *Service) collectOnce() {
 	} else {
 		s.lastSuccess.Store(snap.CollectedAt.Unix())
 		if s.cfg.Timeout > 0 && duration > s.cfg.Timeout {
-			s.logger.Warn("LSF collection exceeded configured timeout threshold", "jobs", len(jobs), "duration", duration.String(), "threshold", s.cfg.Timeout.String())
+			s.logger.Warn("LSF collection exceeded configured timeout threshold", "jobs", len(data.Jobs), "duration", duration.String(), "threshold", s.cfg.Timeout.String())
 		} else {
-			s.logger.Debug("LSF collection completed", "jobs", len(jobs), "duration", duration.String())
+			s.logger.Debug("LSF collection completed", "jobs", len(data.Jobs), "duration", duration.String())
 		}
 	}
 
