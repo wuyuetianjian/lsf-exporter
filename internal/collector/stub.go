@@ -16,6 +16,10 @@ func (s *stubSource) Collect() (Data, error) {
 	return Data{}, fmt.Errorf("LSF C API collector is disabled; rebuild with: go build -tags lsf ./cmd/lsf-exporter")
 }
 
+func (s *stubSource) CollectJobs(bool) (Data, error) {
+	return s.Collect()
+}
+
 func (s *stubSource) Close() error {
 	return nil
 }

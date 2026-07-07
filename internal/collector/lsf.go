@@ -259,33 +259,43 @@ func NewLSFSource(cfg LSFConfig) (Source, error) {
 	defer C.free(unsafe.Pointer(errBuf))
 
 	if rc := C.lsf_exporter_init(app, errBuf, 4096); rc != 0 {
-		return Data{}, errors.New(C.GoString(errBuf))
+		return nil, errors.New(C.GoString(errBuf))
 	}
 	return &lsfSource{cfg: cfg}, nil
 }
 
 func (s *lsfSource) Collect() (Data, error) {
+	return s.collect(s.cfg)
+}
+
+func (s *lsfSource) CollectJobs(includeFinished bool) (Data, error) {
+	cfg := s.cfg
+	cfg.QueryAllJobs = includeFinished
+	return s.collect(cfg)
+}
+
+func (s *lsfSource) collect(cfg LSFConfig) (Data, error) {
 	var cJobs *C.lsf_exporter_job
 	var cCount C.int
 	errBuf := (*C.char)(C.calloc(1, 4096))
 	defer C.free(unsafe.Pointer(errBuf))
 
-	jobName := cStringOrNil(s.cfg.QueryJobName)
-	userName := cStringOrNil(s.cfg.QueryUser)
-	queueName := cStringOrNil(s.cfg.QueryQueue)
-	hostName := cStringOrNil(s.cfg.QueryHost)
+	jobName := cStringOrNil(cfg.QueryJobName)
+	userName := cStringOrNil(cfg.QueryUser)
+	queueName := cStringOrNil(cfg.QueryQueue)
+	hostName := cStringOrNil(cfg.QueryHost)
 	defer freeCString(jobName)
 	defer freeCString(userName)
 	defer freeCString(queueName)
 	defer freeCString(hostName)
 
 	includeFinished := C.int(0)
-	if s.cfg.QueryAllJobs {
+	if cfg.QueryAllJobs {
 		includeFinished = 1
 	}
 
 	rc := C.lsf_exporter_collect(
-		C.longlong(s.cfg.QueryJobID),
+		C.longlong(cfg.QueryJobID),
 		jobName,
 		userName,
 		queueName,

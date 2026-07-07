@@ -38,6 +38,7 @@ Endpoints:
 
 - `/metrics`: Prometheus metrics.
 - `/jobs`: cached full snapshot as JSON, including copied job fields.
+- `/all-jobs`: independent all-job query cache. Add `?refresh=true` or `?trigger=true` to run an `ALL_JOB` query and refresh this cache.
 - `/snapshot`: cached full snapshot as JSON.
 - `/queues`, `/hosts`, `/cluster`, `/licenses`, `/resources`: resource-specific JSON views.
 - `/healthz`: process health.
@@ -63,6 +64,16 @@ Environment variables:
 | `LSF_EXPORTER_DISABLE_NATIVE_COLLECTOR` | `false` | Disable the native LSF C API collector and rely on external JSON collection only. |
 | `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` | empty | Optional command that writes JSON for queues, hosts, cluster, licenses, custom resources, or extra job details. |
 | `LSF_EXPORTER_EXTERNAL_RESOURCE_TIMEOUT` | `10s` | Timeout for the external resource command. |
+
+## All-Job Query Endpoint
+
+`/jobs` remains the normal cached exporter snapshot and is refreshed only by the background collection loop. `/all-jobs` is separate and is intended for manual or controlled reads of historical jobs.
+
+- `GET /all-jobs` returns the last independent all-job cache without calling LSF.
+- `GET /all-jobs?refresh=true` runs one native `ALL_JOB` query and replaces the `/all-jobs` cache.
+- `GET /all-jobs?trigger=true` is accepted as an alias for `refresh=true`.
+
+The response is wrapped with `scope: "all_jobs"` and `refreshed` so callers can distinguish it from `/jobs`. Refreshes are single-flight and respect `LSF_EXPORTER_MIN_INTERVAL`; concurrent refreshes return `409`, and refreshes triggered too soon return `429`.
 
 ## Prometheus Metrics
 

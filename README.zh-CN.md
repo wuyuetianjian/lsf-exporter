@@ -43,6 +43,7 @@ go build -tags lsf -o lsf-exporter ./cmd/lsf-exporter
 | --- | --- |
 | `/metrics` | Prometheus text format 指标 |
 | `/jobs` | 完整缓存快照，兼容旧接口 |
+| `/all-jobs` | 独立的全量 job 查询缓存，带 `?refresh=true` 或 `?trigger=true` 时触发一次 `ALL_JOB` 查询 |
 | `/snapshot` | 完整缓存快照 |
 | `/queues` | queue 快照 |
 | `/hosts` | host 快照 |
@@ -70,6 +71,16 @@ go build -tags lsf -o lsf-exporter ./cmd/lsf-exporter
 | `LSF_EXPORTER_DISABLE_NATIVE_COLLECTOR` | `false` | 是否禁用原生 LSF C API collector，仅使用外部 JSON 采集 |
 | `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` | 空 | 外部 JSON 扩展采集命令 |
 | `LSF_EXPORTER_EXTERNAL_RESOURCE_TIMEOUT` | `10s` | 外部扩展命令超时时间 |
+
+## 全量 Job 查询接口
+
+`/jobs` 仍然是后台采集循环维护的常规缓存快照。`/all-jobs` 是单独的全量 job 查询缓存，用于人工或受控地读取历史 job，避免把全量历史 job 混入 Prometheus 使用的常规快照。
+
+- `GET /all-jobs` 只返回上一次独立全量查询缓存，不调用 LSF。
+- `GET /all-jobs?refresh=true` 执行一次原生 `ALL_JOB` 查询，并替换 `/all-jobs` 缓存。
+- `GET /all-jobs?trigger=true` 与 `refresh=true` 等价。
+
+响应会额外包含 `scope: "all_jobs"` 和 `refreshed` 字段，调用方可以明确区分它和 `/jobs`。刷新操作同一时间只允许一个执行，并复用 `LSF_EXPORTER_MIN_INTERVAL` 做限流；并发刷新返回 `409`，触发过快返回 `429`。
 
 ## 原生 Job 采集
 

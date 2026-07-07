@@ -28,6 +28,11 @@ type Source interface {
 	Close() error
 }
 
+type JobQuerySource interface {
+	Source
+	CollectJobs(includeFinished bool) (Data, error)
+}
+
 type Data struct {
 	Jobs            []Job            `json:"jobs,omitempty"`
 	Queues          []Queue          `json:"queues,omitempty"`

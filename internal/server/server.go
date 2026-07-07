@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -13,10 +14,11 @@ import (
 	"lsf-exporter/internal/logger"
 )
 
-func Register(mux *http.ServeMux, svc *collector.Service, log *logger.Logger) {
+func Register(mux *http.ServeMux, svc *collector.Service, fullJobs *collector.JobQueryService, log *logger.Logger) {
 	mux.HandleFunc("/metrics", metricsHandler(svc))
 	mux.HandleFunc("/snapshot", snapshotHandler(svc, log))
 	mux.HandleFunc("/jobs", jobsHandler(svc, log))
+	mux.HandleFunc("/all-jobs", allJobsHandler(fullJobs, log))
 	mux.HandleFunc("/queues", queuesHandler(svc, log))
 	mux.HandleFunc("/hosts", hostsHandler(svc, log))
 	mux.HandleFunc("/cluster", clusterHandler(svc, log))
@@ -190,6 +192,77 @@ func snapshotHandler(svc *collector.Service, log *logger.Logger) http.HandlerFun
 
 func jobsHandler(svc *collector.Service, log *logger.Logger) http.HandlerFunc {
 	return jsonHandler(log, func() any { return svc.Snapshot() })
+}
+
+type allJobsResponse struct {
+	Scope     string             `json:"scope"`
+	Refreshed bool               `json:"refreshed"`
+	Error     string             `json:"error,omitempty"`
+	Snapshot  collector.Snapshot `json:"snapshot"`
+}
+
+func allJobsHandler(svc *collector.JobQueryService, log *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if svc == nil {
+			http.Error(w, `{"error":"native LSF job collector is disabled"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		refresh, err := refreshRequested(r)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		snap := svc.Snapshot()
+		refreshed := false
+		status := http.StatusOK
+		var responseErr string
+		if refresh {
+			refreshed = true
+			snap, err = svc.CollectAllJobs()
+			switch {
+			case err == nil:
+			case errors.Is(err, collector.ErrJobQueryInProgress):
+				refreshed = false
+				responseErr = err.Error()
+				status = http.StatusConflict
+			case errors.Is(err, collector.ErrJobQueryTooSoon):
+				refreshed = false
+				responseErr = err.Error()
+				status = http.StatusTooManyRequests
+			default:
+				responseErr = err.Error()
+				status = http.StatusInternalServerError
+			}
+		}
+
+		w.WriteHeader(status)
+		if err := json.NewEncoder(w).Encode(allJobsResponse{
+			Scope:     "all_jobs",
+			Refreshed: refreshed,
+			Error:     responseErr,
+			Snapshot:  snap,
+		}); err != nil {
+			log.Warn("failed to encode json response", "error", err)
+		}
+	}
+}
+
+func refreshRequested(r *http.Request) (bool, error) {
+	raw := r.URL.Query().Get("refresh")
+	if raw == "" {
+		raw = r.URL.Query().Get("trigger")
+	}
+	if raw == "" {
+		return false, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("refresh must be a boolean")
+	}
+	return v, nil
 }
 
 func queuesHandler(svc *collector.Service, log *logger.Logger) http.HandlerFunc {

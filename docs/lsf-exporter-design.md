@@ -18,11 +18,14 @@ Production builds use `go build -tags lsf`, which enables the cgo implementation
 - LSF query results are copied into Go-owned memory before `lsb_closejobinfo`.
 - Prometheus `/metrics` never calls LSF APIs.
 - `/jobs` returns the cached full job snapshot as JSON.
+- `/all-jobs` keeps an independent all-job cache and calls `ALL_JOB` only when `refresh=true` or `trigger=true` is passed.
 - Collection duration, errors, skipped collections, and snapshot age are exported for alerting.
 
 ## Data Exposure
 
 Prometheus receives stable numeric metrics and bounded labels. The full per-job payload is exposed through `/jobs` because exporting every job field as Prometheus labels would create high cardinality and can overload Prometheus.
+
+`/all-jobs` is intentionally separate from `/jobs`. It is not part of the Prometheus scrape path, and a read without `refresh=true` returns only the last independent all-job cache. A refresh performs one native `ALL_JOB` query, replaces only the all-job cache, and leaves the normal background snapshot untouched.
 
 ## Unsupported Data and Extension Boundaries
 

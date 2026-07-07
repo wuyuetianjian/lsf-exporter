@@ -26,6 +26,7 @@ func main() {
 	log := logger.New(os.Stdout, cfg.LogLevel)
 
 	var sources []collector.Source
+	var nativeJobSource collector.JobQuerySource
 	if !cfg.DisableNativeCollector {
 		src, err := collector.NewLSFSource(cfg.LSF)
 		if err != nil {
@@ -33,6 +34,9 @@ func main() {
 			os.Exit(1)
 		}
 		sources = append(sources, src)
+		if querySource, ok := src.(collector.JobQuerySource); ok {
+			nativeJobSource = querySource
+		}
 	}
 	if !collector.IsNoopExternalConfig(cfg.External) {
 		sources = append(sources, collector.NewExternalSource(cfg.External))
@@ -46,13 +50,14 @@ func main() {
 	defer src.Close()
 
 	svc := collector.NewService(src, cfg.Collector, log)
+	fullJobs := collector.NewJobQueryService(nativeJobSource, cfg.Collector, log)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	go svc.Run(ctx)
 
 	mux := http.NewServeMux()
-	server.Register(mux, svc, log)
+	server.Register(mux, svc, fullJobs, log)
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddress,
