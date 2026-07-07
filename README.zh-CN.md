@@ -113,6 +113,13 @@ go build -tags lsf -o lsf-exporter ./cmd/lsf-exporter
 
 queue、host、cluster、license、GPU、自定义 resource 等能力通过 `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` 接入。命令需要向标准输出写出 JSON，结构如下：
 
+项目内提供了一个基于常见 LSF CLI 输出的辅助脚本：
+
+```sh
+chmod +x scripts/collect-extra.sh
+LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND="./scripts/collect-extra.sh" ./lsf-exporter
+```
+
 ```json
 {
   "queues": [

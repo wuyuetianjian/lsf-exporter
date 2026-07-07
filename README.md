@@ -107,6 +107,13 @@ The `/jobs` JSON payload also includes job detail fields that are intentionally 
 
 Queue, host, cluster, license, GPU, and custom resource collection is exposed through an optional external JSON command. Set `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND` to a local script or command that writes a JSON object with any of these fields: `jobs`, `queues`, `hosts`, `cluster`, `licenses`, and `custom_resources`.
 
+This repository includes a helper script for common LSF CLI output:
+
+```sh
+chmod +x scripts/collect-extra.sh
+LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND="./scripts/collect-extra.sh" ./lsf-exporter
+```
+
 See `README.zh-CN.md` for the full JSON schema and examples.
 ## Prometheus Scrape Example
 
