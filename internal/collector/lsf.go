@@ -43,6 +43,7 @@ typedef struct {
 	long long start_time;
 	long long end_time;
 	int exit_status;
+	int requested_cpu;
 	double cpu_time;
 	long long memory_kb;
 	long long swap_kb;
@@ -143,6 +144,7 @@ static void fill_job(struct jobInfoEnt *job, lsf_exporter_job *out) {
 	out->start_time = (long long)job->startTime;
 	out->end_time = (long long)job->endTime;
 	out->exit_status = job->exitStatus;
+	out->requested_cpu = job->submit.numProcessors;
 	out->cpu_time = (double)job->cpuTime;
 	out->memory_kb = (long long)job->runRusage.mem;
 	out->swap_kb = (long long)job->runRusage.swap;
@@ -336,12 +338,14 @@ func (s *lsfSource) collect(cfg LSFConfig) (Data, error) {
 			StartTime:     int64(record.start_time),
 			EndTime:       int64(record.end_time),
 			ExitStatus:    int(record.exit_status),
+			RequestedCPU:  int(record.requested_cpu),
 			CPUTime:       float64(record.cpu_time),
 			MemoryKB:      int64(record.memory_kb),
 			SwapKB:        int64(record.swap_kb),
 			ResourceReq:   C.GoString(record.resource_requirement),
 			Dependency:    C.GoString(record.dependency_condition),
 		}
+		job.RequestedMemKB = requestedMemoryKB(job.ResourceReq)
 		job.Raw = map[string]string{
 			"job_id":               fmt.Sprintf("%d", job.ID),
 			"status_code":          fmt.Sprintf("%d", job.StatusCode),
@@ -363,6 +367,8 @@ func (s *lsfSource) collect(cfg LSFConfig) (Data, error) {
 			"start_time":           fmt.Sprintf("%d", job.StartTime),
 			"end_time":             fmt.Sprintf("%d", job.EndTime),
 			"exit_status":          fmt.Sprintf("%d", job.ExitStatus),
+			"requested_cpu":        fmt.Sprintf("%d", job.RequestedCPU),
+			"requested_memory_kb":  fmt.Sprintf("%d", job.RequestedMemKB),
 			"cpu_time":             fmt.Sprintf("%f", job.CPUTime),
 			"memory_kb":            fmt.Sprintf("%d", job.MemoryKB),
 			"swap_kb":              fmt.Sprintf("%d", job.SwapKB),

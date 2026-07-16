@@ -1,0 +1,24 @@
+[Unit]
+Description=Prometheus exporter for IBM Spectrum LSF
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/sysconfig/lsf-exporter
+WorkingDirectory=/opt/lsf-exporter
+ExecStart=/opt/lsf-exporter/lsf-exporter
+# User=lsf
+# Group=lsf
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -35,6 +35,19 @@ go build -tags lsf -o lsf-exporter ./cmd/lsf-exporter
 ./lsf-exporter
 ```
 
+项目在 `deploy/` 下提供 systemd 部署文件：
+
+```sh
+install -D -m 0755 lsf-exporter /opt/lsf-exporter/lsf-exporter
+install -D -m 0755 scripts/collect-extra.sh /opt/lsf-exporter/collect-extra.sh
+install -D -m 0644 deploy/lsf-exporter.env.example /etc/sysconfig/lsf-exporter
+install -D -m 0644 deploy/lsf-exporter.service /etc/systemd/system/lsf-exporter.service
+systemctl daemon-reload
+systemctl enable --now lsf-exporter
+```
+
+启动前请按现场 LSF 安装路径调整 `/etc/sysconfig/lsf-exporter`。
+
 默认监听地址是 `:9818`。
 
 ## HTTP 接口
@@ -104,8 +117,10 @@ go build -tags lsf -o lsf-exporter ./cmd/lsf-exporter
 | 命令路径 | `command`、`cwd`、`input_file`、`output_file`、`error_file` |
 | 时间 | `submit_time`、`start_time`、`end_time` |
 | 退出 | `exit_status` |
-| 资源 | `cpu_time_seconds`、`memory_kb`、`swap_kb` |
+| 资源 | `requested_cpu`、`cpu_time_seconds`、`requested_memory_kb`、`memory_kb`、`swap_kb` |
 | 提交表达式 | `resource_requirement`、`dependency_condition` |
+
+`requested_cpu` 表示提交时请求的 CPU/slot 数，`cpu_time_seconds` 表示 LSF 返回的累计 CPU 使用时间。`requested_memory_kb` 从 `rusage[mem=...]` 解析得到，`memory_kb` 表示 job 实际内存使用。
 
 `resource_requirement`、`dependency_condition`、命令和路径属于高基数字段，只放在 JSON 快照中，不作为 Prometheus label。
 
@@ -119,6 +134,14 @@ queue、host、cluster、license、GPU、自定义 resource 等能力通过 `LSF
 chmod +x scripts/collect-extra.sh
 LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND="./scripts/collect-extra.sh" ./lsf-exporter
 ```
+
+该脚本通过 `lsid` 获取 cluster/master，通过 `bqueues` 获取 queue，通过 `bhosts` 获取 host，通过 `bmgroup -w` 获取机器组，通过 `busers -w` 获取用户，通过 `bugroup -w` 获取用户组，通过 `lsinfo -r` 获取 resource 定义，并优先用 `blstat`、其次用 `lmstat -a` 尝试获取 license feature。某个命令不可用时，对应部分会返回空，并把诊断信息写到 stderr。
+
+机器组关联会放在 JSON 字段中：host 会包含 `resources.host_groups`，queue 会包含 `raw.host_spec`、`raw.host_spec_tokens`、`raw.host_groups` 和 `raw.hosts`，每个机器组也会以 `type: "host_group"` 的 `custom_resources` 条目输出。对 queue 来说，`bqueues -l` 的 `HOSTS` 字段中带 `/` 的 token 会被当作机器组；脚本去除 `/` 后执行 `bhosts <group>` 展开成员，并把这些成员与不带 `/` 的单节点 host 合并去重后写入 `raw.hosts`。
+
+用户关联会放在 JSON 字段中：queue 会包含 `raw.user_spec`、`raw.user_spec_tokens`、`raw.user_groups` 和 `raw.users`。对 queue 来说，`bqueues -l` 的 `USERS` 字段中带 `/` 的 token 会被当作用户组；`all` 会在 `busers -w` 可用时展开为全部用户。
+
+queue 是否 interactive 也放在 JSON 字段中：当 `bqueues -l` 的队列详情包含 `INTERACTIVE` 时，`raw.interactive` 为 `true`；`NO_INTERACTIVE` 优先级更高，会强制 `raw.interactive` 为 `false`。如果匹配到对应行，会放到 `raw.interactive_source` 便于核对。
 
 ```json
 {
@@ -229,7 +252,9 @@ Job 指标：
 | 指标 | 说明 |
 | --- | --- |
 | `lsf_job_info` | job 信息，值固定为 `1` |
+| `lsf_job_requested_cpu` | job 提交时请求的 CPU/slot 数 |
 | `lsf_job_cpu_time_seconds` | job CPU time |
+| `lsf_job_requested_memory_kilobytes` | job 提交时请求的内存 |
 | `lsf_job_memory_kilobytes` | job 内存使用 |
 | `lsf_job_swap_kilobytes` | job swap 使用 |
 | `lsf_job_exit_status` | job 退出状态码 |

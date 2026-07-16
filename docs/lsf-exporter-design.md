@@ -25,6 +25,8 @@ Production builds use `go build -tags lsf`, which enables the cgo implementation
 
 Prometheus receives stable numeric metrics and bounded labels. The full per-job payload is exposed through `/jobs` because exporting every job field as Prometheus labels would create high cardinality and can overload Prometheus.
 
+Submitted CPU/slot count is copied from the LSF job submit record into `requested_cpu` and exported as `lsf_job_requested_cpu`. Used CPU is the LSF accumulated CPU time field and is exposed as `cpu_time_seconds` in JSON and `lsf_job_cpu_time_seconds` in Prometheus. Submitted memory is parsed from `rusage[mem=...]` into `requested_memory_kb` and `lsf_job_requested_memory_kilobytes`; used memory remains the LSF runtime usage field exposed as `memory_kb` and `lsf_job_memory_kilobytes`.
+
 `/all-jobs` is intentionally separate from `/jobs`. It is not part of the Prometheus scrape path, and a read without `refresh=true` returns only the last independent all-job cache. A refresh performs one native `ALL_JOB` query, replaces only the all-job cache, and leaves the normal background snapshot untouched.
 
 ## Unsupported Data and Extension Boundaries
@@ -51,6 +53,8 @@ Future extensions should preserve the existing protection model: no LSF API call
 ## External Resource Extension
 
 The native cgo source remains responsible for job collection through the LSF C API. Queue, host, cluster, license, GPU, and site-specific custom resource data can be supplied through `LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND`. The command must emit JSON matching the exporter `Data` schema: `jobs`, `queues`, `hosts`, `cluster`, `licenses`, and `custom_resources`.
+
+The bundled `scripts/collect-extra.sh` keeps verbose queue relationships in JSON-only `raw` fields. Queue host relationships use `raw.host_spec`, `raw.host_spec_tokens`, `raw.host_groups`, and `raw.hosts`. Queue user relationships use `raw.user_spec`, `raw.user_spec_tokens`, `raw.user_groups`, and `raw.users`; `USERS: all` is expanded from `busers -w` when available.
 
 This keeps the scrape path safe while allowing operators to integrate LSF CLI scripts, site-specific APIs, or future native C API collectors without changing the HTTP and Prometheus surface. Verbose or high-cardinality fields such as pending reasons, exit reasons, resource requirement strings, dependency expressions, command paths, and custom resource details remain JSON-first and should only become metrics after explicit low-cardinality parsing or allowlisting.
 ## Operational Defaults

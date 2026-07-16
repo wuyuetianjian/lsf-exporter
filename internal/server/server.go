@@ -91,8 +91,14 @@ func writeJobMetrics(b *strings.Builder, snap collector.Snapshot) {
 		if job.CPUTime > 0 {
 			writeGauge(b, "lsf_job_cpu_time_seconds", labels{"job_id": jobID, "status": job.Status}, job.CPUTime)
 		}
+		if job.RequestedCPU > 0 {
+			writeGauge(b, "lsf_job_requested_cpu", labels{"job_id": jobID, "status": job.Status}, float64(job.RequestedCPU))
+		}
 		if job.MemoryKB > 0 {
 			writeGauge(b, "lsf_job_memory_kilobytes", labels{"job_id": jobID, "status": job.Status}, float64(job.MemoryKB))
+		}
+		if job.RequestedMemKB > 0 {
+			writeGauge(b, "lsf_job_requested_memory_kilobytes", labels{"job_id": jobID, "status": job.Status}, float64(job.RequestedMemKB))
 		}
 		if job.SwapKB > 0 {
 			writeGauge(b, "lsf_job_swap_kilobytes", labels{"job_id": jobID, "status": job.Status}, float64(job.SwapKB))

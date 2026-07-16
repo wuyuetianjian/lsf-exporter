@@ -34,6 +34,19 @@ Development builds without `-tags lsf` use a stub collector and are only useful 
 ./lsf-exporter
 ```
 
+Systemd deployment files are provided under `deploy/`:
+
+```sh
+install -D -m 0755 lsf-exporter /opt/lsf-exporter/lsf-exporter
+install -D -m 0755 scripts/collect-extra.sh /opt/lsf-exporter/collect-extra.sh
+install -D -m 0644 deploy/lsf-exporter.env.example /etc/sysconfig/lsf-exporter
+install -D -m 0644 deploy/lsf-exporter.service /etc/systemd/system/lsf-exporter.service
+systemctl daemon-reload
+systemctl enable --now lsf-exporter
+```
+
+Edit `/etc/sysconfig/lsf-exporter` before starting if your LSF paths differ from `/tools/lsf`.
+
 Endpoints:
 
 - `/metrics`: Prometheus metrics.
@@ -93,10 +106,12 @@ Important self-monitoring metrics:
 
 Job metrics:
 
-The `/jobs` JSON payload also includes job detail fields that are intentionally not exposed as Prometheus labels, including `exit_status`, `resource_requirement`, and `dependency_condition`.
+The `/jobs` JSON payload also includes job detail fields that are intentionally not exposed as Prometheus labels, including `exit_status`, `requested_cpu`, `requested_memory_kb`, `resource_requirement`, and `dependency_condition`. `requested_cpu` is the submitted CPU/slot count from LSF, while `cpu_time_seconds` is the accumulated CPU time used by the job. `requested_memory_kb` is parsed from `rusage[mem=...]`, while `memory_kb` is the memory used by the job.
 
 - `lsf_job_info`
+- `lsf_job_requested_cpu`
 - `lsf_job_cpu_time_seconds`
+- `lsf_job_requested_memory_kilobytes`
 - `lsf_job_memory_kilobytes`
 - `lsf_job_swap_kilobytes`
 - `lsf_job_exit_status`
@@ -113,6 +128,14 @@ This repository includes a helper script for common LSF CLI output:
 chmod +x scripts/collect-extra.sh
 LSF_EXPORTER_EXTERNAL_RESOURCE_COMMAND="./scripts/collect-extra.sh" ./lsf-exporter
 ```
+
+The helper reads `lsid` for cluster/master, `bqueues` for queues, `bhosts` for hosts, `bmgroup -w` for host groups, `busers -w` for users, `bugroup -w` for user groups, `lsinfo -r` for resource definitions, and tries `blstat` first then `lmstat -a` for license features. If a command is unavailable, that section is returned empty and the diagnostic is written to stderr.
+
+Host group relationships are included in JSON-only fields: each host can include `resources.host_groups`, each queue can include `raw.host_spec`, `raw.host_spec_tokens`, `raw.host_groups`, and `raw.hosts`, and each host group is also published as a `custom_resources` item with `type: "host_group"`. For queues, a token in the `bqueues -l` `HOSTS` field is treated as a host group when it contains `/`; the script strips `/`, runs `bhosts <group>`, and combines those members with single-host tokens into the de-duplicated `raw.hosts` set.
+
+Queue user relationships are included in JSON-only fields: each queue can include `raw.user_spec`, `raw.user_spec_tokens`, `raw.user_groups`, and `raw.users`. For queues, a token in the `bqueues -l` `USERS` field is treated as a user group when it contains `/`; `all` is expanded to the users returned by `busers -w` when that command is available.
+
+Queue interactivity is also JSON-only: `raw.interactive` is `true` when the queue detail from `bqueues -l` contains `INTERACTIVE`; `NO_INTERACTIVE` takes precedence and forces `raw.interactive` to `false`. `raw.interactive_source` keeps the matching detail line when present.
 
 See `README.zh-CN.md` for the full JSON schema and examples.
 ## Prometheus Scrape Example
