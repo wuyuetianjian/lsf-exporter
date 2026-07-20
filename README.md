@@ -52,6 +52,7 @@ Endpoints:
 - `/metrics`: Prometheus metrics.
 - `/jobs`: cached full snapshot as JSON, including copied job fields.
 - `/all-jobs`: independent all-job query cache. Add `?refresh=true` or `?trigger=true` to run an `ALL_JOB` query and refresh this cache.
+- `/finished-jobs`: finished job detail view filtered from the independent all-job cache. Add `?refresh=true` or `?trigger=true` to refresh this cache first.
 - `/snapshot`: cached full snapshot as JSON.
 - `/queues`, `/hosts`, `/cluster`, `/licenses`, `/resources`: resource-specific JSON views.
 - `/healthz`: process health.
@@ -85,8 +86,10 @@ Environment variables:
 - `GET /all-jobs` returns the last independent all-job cache without calling LSF.
 - `GET /all-jobs?refresh=true` runs one native `ALL_JOB` query and replaces the `/all-jobs` cache.
 - `GET /all-jobs?trigger=true` is accepted as an alias for `refresh=true`.
+- `GET /finished-jobs` returns only `DONE` and `EXIT` jobs from the same independent all-job cache.
+- `GET /finished-jobs?refresh=true` refreshes the all-job cache first, then returns only finished job details.
 
-The response is wrapped with `scope: "all_jobs"` and `refreshed` so callers can distinguish it from `/jobs`. Refreshes are single-flight and respect `LSF_EXPORTER_MIN_INTERVAL`; concurrent refreshes return `409`, and refreshes triggered too soon return `429`.
+The response is wrapped with `scope` and `refreshed` so callers can distinguish it from `/jobs`. `/all-jobs` uses `scope: "all_jobs"` and `/finished-jobs` uses `scope: "finished_jobs"`. Refreshes are single-flight and respect `LSF_EXPORTER_MIN_INTERVAL`; concurrent refreshes return `409`, and refreshes triggered too soon return `429`.
 
 ## Prometheus Metrics
 
@@ -106,7 +109,9 @@ Important self-monitoring metrics:
 
 Job metrics:
 
-The `/jobs` JSON payload also includes job detail fields that are intentionally not exposed as Prometheus labels, including `exit_status`, `requested_cpu`, `requested_memory_kb`, `resource_requirement`, and `dependency_condition`. `requested_cpu` is the submitted CPU/slot count from LSF, while `cpu_time_seconds` is the accumulated CPU time used by the job. `requested_memory_kb` is parsed from `rusage[mem=...]`, while `memory_kb` is the memory used by the job.
+The `/jobs` JSON payload also includes job detail fields that are intentionally not exposed as Prometheus labels, including `exit_status`, `requested_cpu`, `requested_memory_kb`, `resource_requirement`, and `dependency_condition`. `requested_cpu` is the submitted CPU/slot count from LSF, while `cpu_time_seconds` is the accumulated CPU time used by the job. `requested_memory_kb` is parsed from `rusage[mem=...]`, while `memory_kb` is converted from the LSF `jobInfoEnt.maxMem` value so it matches `bjobs` `max_mem`/Max Memory output.
+
+When LSF returns the same execution host multiple times for multi-slot jobs, `execution_host` is compacted as `N * host`, for example `4 * host-a`.
 
 - `lsf_job_info`
 - `lsf_job_requested_cpu`

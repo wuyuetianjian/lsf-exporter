@@ -49,3 +49,25 @@ func TestWriteJobMetricsIncludesRequestedCPUAndCPUTime(t *testing.T) {
 		t.Fatalf("missing used swap metric in:\n%s", got)
 	}
 }
+
+func TestFinishedJobsFiltersDoneAndExit(t *testing.T) {
+	jobs := []collector.Job{
+		{ID: 1, Status: "RUN"},
+		{ID: 2, Status: "DONE"},
+		{ID: 3, Status: "EXIT"},
+		{ID: 4, Status: "PEND"},
+		{ID: 5, Status: " done "},
+	}
+
+	got := finishedJobs(jobs)
+	if len(got) != 3 {
+		t.Fatalf("finishedJobs returned %d jobs, want 3: %#v", len(got), got)
+	}
+
+	wantIDs := []int64{2, 3, 5}
+	for i, want := range wantIDs {
+		if got[i].ID != want {
+			t.Fatalf("finishedJobs[%d].ID = %d, want %d", i, got[i].ID, want)
+		}
+	}
+}

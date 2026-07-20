@@ -19,6 +19,7 @@ func Register(mux *http.ServeMux, svc *collector.Service, fullJobs *collector.Jo
 	mux.HandleFunc("/snapshot", snapshotHandler(svc, log))
 	mux.HandleFunc("/jobs", jobsHandler(svc, log))
 	mux.HandleFunc("/all-jobs", allJobsHandler(fullJobs, log))
+	mux.HandleFunc("/finished-jobs", finishedJobsHandler(fullJobs, log))
 	mux.HandleFunc("/queues", queuesHandler(svc, log))
 	mux.HandleFunc("/hosts", hostsHandler(svc, log))
 	mux.HandleFunc("/cluster", clusterHandler(svc, log))
@@ -253,6 +254,75 @@ func allJobsHandler(svc *collector.JobQueryService, log *logger.Logger) http.Han
 		}); err != nil {
 			log.Warn("failed to encode json response", "error", err)
 		}
+	}
+}
+
+func finishedJobsHandler(svc *collector.JobQueryService, log *logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if svc == nil {
+			http.Error(w, `{"error":"native LSF job collector is disabled"}`, http.StatusServiceUnavailable)
+			return
+		}
+
+		refresh, err := refreshRequested(r)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		snap := svc.Snapshot()
+		refreshed := false
+		status := http.StatusOK
+		var responseErr string
+		if refresh {
+			refreshed = true
+			snap, err = svc.CollectAllJobs()
+			switch {
+			case err == nil:
+			case errors.Is(err, collector.ErrJobQueryInProgress):
+				refreshed = false
+				responseErr = err.Error()
+				status = http.StatusConflict
+			case errors.Is(err, collector.ErrJobQueryTooSoon):
+				refreshed = false
+				responseErr = err.Error()
+				status = http.StatusTooManyRequests
+			default:
+				responseErr = err.Error()
+				status = http.StatusInternalServerError
+			}
+		}
+		snap.Jobs = finishedJobs(snap.Jobs)
+
+		w.WriteHeader(status)
+		if err := json.NewEncoder(w).Encode(allJobsResponse{
+			Scope:     "finished_jobs",
+			Refreshed: refreshed,
+			Error:     responseErr,
+			Snapshot:  snap,
+		}); err != nil {
+			log.Warn("failed to encode json response", "error", err)
+		}
+	}
+}
+
+func finishedJobs(jobs []collector.Job) []collector.Job {
+	finished := make([]collector.Job, 0, len(jobs))
+	for _, job := range jobs {
+		if isFinishedStatus(job.Status) {
+			finished = append(finished, job)
+		}
+	}
+	return finished
+}
+
+func isFinishedStatus(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "DONE", "EXIT":
+		return true
+	default:
+		return false
 	}
 }
 

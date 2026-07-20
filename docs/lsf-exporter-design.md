@@ -19,15 +19,18 @@ Production builds use `go build -tags lsf`, which enables the cgo implementation
 - Prometheus `/metrics` never calls LSF APIs.
 - `/jobs` returns the cached full job snapshot as JSON.
 - `/all-jobs` keeps an independent all-job cache and calls `ALL_JOB` only when `refresh=true` or `trigger=true` is passed.
+- `/finished-jobs` filters the independent all-job cache to `DONE` and `EXIT` job details.
 - Collection duration, errors, skipped collections, and snapshot age are exported for alerting.
 
 ## Data Exposure
 
 Prometheus receives stable numeric metrics and bounded labels. The full per-job payload is exposed through `/jobs` because exporting every job field as Prometheus labels would create high cardinality and can overload Prometheus.
 
-Submitted CPU/slot count is copied from the LSF job submit record into `requested_cpu` and exported as `lsf_job_requested_cpu`. Used CPU is the LSF accumulated CPU time field and is exposed as `cpu_time_seconds` in JSON and `lsf_job_cpu_time_seconds` in Prometheus. Submitted memory is parsed from `rusage[mem=...]` into `requested_memory_kb` and `lsf_job_requested_memory_kilobytes`; used memory remains the LSF runtime usage field exposed as `memory_kb` and `lsf_job_memory_kilobytes`.
+Submitted CPU/slot count is copied from the LSF job submit record into `requested_cpu` and exported as `lsf_job_requested_cpu`. Used CPU is the LSF accumulated CPU time field and is exposed as `cpu_time_seconds` in JSON and `lsf_job_cpu_time_seconds` in Prometheus. Submitted memory is parsed from `rusage[mem=...]` into `requested_memory_kb` and `lsf_job_requested_memory_kilobytes`; used memory is copied from the LSF `jobInfoEnt.maxMem` field and exposed as `memory_kb` and `lsf_job_memory_kilobytes`. The native collector converts `maxMem` from MB to KB so the exporter matches `bjobs` `max_mem`/Max Memory output while keeping the existing metric unit.
 
-`/all-jobs` is intentionally separate from `/jobs`. It is not part of the Prometheus scrape path, and a read without `refresh=true` returns only the last independent all-job cache. A refresh performs one native `ALL_JOB` query, replaces only the all-job cache, and leaves the normal background snapshot untouched.
+Repeated execution hosts are compacted in the JSON job field as `N * host`, keeping multi-slot jobs readable while preserving distinct host names as comma-separated entries.
+
+`/all-jobs` is intentionally separate from `/jobs`. It is not part of the Prometheus scrape path, and a read without `refresh=true` returns only the last independent all-job cache. A refresh performs one native `ALL_JOB` query, replaces only the all-job cache, and leaves the normal background snapshot untouched. `/finished-jobs` reuses that same cache and returns only `DONE` and `EXIT` job details.
 
 ## Unsupported Data and Extension Boundaries
 

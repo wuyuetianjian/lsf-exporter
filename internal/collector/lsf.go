@@ -146,7 +146,7 @@ static void fill_job(struct jobInfoEnt *job, lsf_exporter_job *out) {
 	out->exit_status = job->exitStatus;
 	out->requested_cpu = job->submit.numProcessors;
 	out->cpu_time = (double)job->cpuTime;
-	out->memory_kb = (long long)job->runRusage.mem;
+	out->memory_kb = (long long)job->maxMem * 1024;
 	out->swap_kb = (long long)job->runRusage.swap;
 }
 
@@ -328,7 +328,7 @@ func (s *lsfSource) collect(cfg LSFConfig) (Data, error) {
 			Application:   C.GoString(record.application),
 			ServiceClass:  C.GoString(record.service_class),
 			FromHost:      C.GoString(record.from_host),
-			ExecutionHost: C.GoString(record.execution_host),
+			ExecutionHost: formatExecutionHosts(C.GoString(record.execution_host)),
 			Command:       C.GoString(record.command),
 			CWD:           C.GoString(record.cwd),
 			InputFile:     C.GoString(record.input_file),

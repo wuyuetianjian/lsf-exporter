@@ -57,6 +57,7 @@ systemctl enable --now lsf-exporter
 | `/metrics` | Prometheus text format 指标 |
 | `/jobs` | 完整缓存快照，兼容旧接口 |
 | `/all-jobs` | 独立的全量 job 查询缓存，带 `?refresh=true` 或 `?trigger=true` 时触发一次 `ALL_JOB` 查询 |
+| `/finished-jobs` | 从独立全量 job 缓存中过滤 `DONE` 和 `EXIT` 作业详情，带 `?refresh=true` 或 `?trigger=true` 时先刷新缓存 |
 | `/snapshot` | 完整缓存快照 |
 | `/queues` | queue 快照 |
 | `/hosts` | host 快照 |
@@ -92,8 +93,10 @@ systemctl enable --now lsf-exporter
 - `GET /all-jobs` 只返回上一次独立全量查询缓存，不调用 LSF。
 - `GET /all-jobs?refresh=true` 执行一次原生 `ALL_JOB` 查询，并替换 `/all-jobs` 缓存。
 - `GET /all-jobs?trigger=true` 与 `refresh=true` 等价。
+- `GET /finished-jobs` 只返回同一份独立全量缓存中的 `DONE` 和 `EXIT` 作业详情。
+- `GET /finished-jobs?refresh=true` 会先刷新全量缓存，再返回已结束作业详情。
 
-响应会额外包含 `scope: "all_jobs"` 和 `refreshed` 字段，调用方可以明确区分它和 `/jobs`。刷新操作同一时间只允许一个执行，并复用 `LSF_EXPORTER_MIN_INTERVAL` 做限流；并发刷新返回 `409`，触发过快返回 `429`。
+响应会额外包含 `scope` 和 `refreshed` 字段，调用方可以明确区分它和 `/jobs`。`/all-jobs` 使用 `scope: "all_jobs"`，`/finished-jobs` 使用 `scope: "finished_jobs"`。刷新操作同一时间只允许一个执行，并复用 `LSF_EXPORTER_MIN_INTERVAL` 做限流；并发刷新返回 `409`，触发过快返回 `429`。
 
 ## 原生 Job 采集
 
@@ -120,7 +123,9 @@ systemctl enable --now lsf-exporter
 | 资源 | `requested_cpu`、`cpu_time_seconds`、`requested_memory_kb`、`memory_kb`、`swap_kb` |
 | 提交表达式 | `resource_requirement`、`dependency_condition` |
 
-`requested_cpu` 表示提交时请求的 CPU/slot 数，`cpu_time_seconds` 表示 LSF 返回的累计 CPU 使用时间。`requested_memory_kb` 从 `rusage[mem=...]` 解析得到，`memory_kb` 表示 job 实际内存使用。
+`requested_cpu` 表示提交时请求的 CPU/slot 数，`cpu_time_seconds` 表示 LSF 返回的累计 CPU 使用时间。`requested_memory_kb` 从 `rusage[mem=...]` 解析得到，`memory_kb` 从 LSF `jobInfoEnt.maxMem` 转换得到，用于匹配 `bjobs` 的 `max_mem`/Max Memory 输出。
+
+当 LSF 对多 slot job 返回重复执行主机时，`execution_host` 会压缩为 `N * host`，例如 `4 * host-a`。
 
 `resource_requirement`、`dependency_condition`、命令和路径属于高基数字段，只放在 JSON 快照中，不作为 Prometheus label。
 
